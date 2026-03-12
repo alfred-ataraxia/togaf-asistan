@@ -25,7 +25,7 @@ st.markdown("""
 st.title(f"{ST_ICON} {ST_TITLE}")
 st.caption("TOGAF 10 Standartları ve ADM Döngüsü Üzerine Uzmanlaşmış Kurumsal Destek Sistemi")
 
-# --- SIDEBAR (Sadeleştirilmiş) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.image("https://www.opengroup.org/sites/default/files/togaf_logo.png", width=150)
     st.header("🔒 Erişim Kontrolü")
@@ -33,7 +33,7 @@ with st.sidebar:
     
     st.divider()
     st.markdown(f"**Günlük Limit:** {MAX_DAILY_QUOTA} Sorgu")
-    st.info("Bu asistan sadece TOGAF 10 kaynaklı bilgilerle yanıt vermektedir.")
+    st.info("Bu asistan resmi TOGAF 10 dökümantasyonu üzerine uzmanlaşmıştır.")
 
 # --- AUTH & API SETUP ---
 VALID_PASSWORD = "togaf"
@@ -42,11 +42,13 @@ if access_password != VALID_PASSWORD:
     st.warning("Lütfen yetkili giriş şifresini giriniz.")
     st.stop()
 
-# API Key - Önce Streamlit Secrets'tan, yoksa Alfred'in configinden dene
-api_key = st.secrets.get("GEMINI_API_KEY") or "AIzaSyBcbRfO3nJTLWyqWkayvMSCXcoqlFjlnVo"
+# API Key - SECURE RETRIEVAL FROM STREAMLIT SECRETS
+# Kullanıcı bu anahtarı Streamlit Cloud panelinde "Secrets" kısmına eklemelidir.
+api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("Sistem hatası: API anahtarı bulunamadı. Lütfen yönetici ile iletişime geçin.")
+    st.error("Sistem Yapılandırma Hatası: API anahtarı 'Secrets' içerisinde tanımlanmamış.")
+    st.info("Yönetici Notu: Lütfen Streamlit Cloud ayarlarından GEMINI_API_KEY değişkenini tanımlayın.")
     st.stop()
 
 # --- MODEL SETUP ---
@@ -60,24 +62,20 @@ Görevin, kurumsal mimarların TOGAF 10 sınavı ve profesyonel uygulamaları ha
 
 TEMEL YÖNERGELER:
 1. Kaynak: Sadece resmi TOGAF 10 standartlarını, ADM döngüsünü ve Open Group Series Guide'larını baz al.
-2. Üslup: Profesyonel, kurumsal ve mimari odaklı bir dil kullan. Gereksiz samimiyetten kaçın.
-3. Kısıtlama: TOGAF dışı genel soruları veya spekülatif yorumları reddet.
-4. Kota: Kullanıcının bu oturumdaki günlük limiti {MAX_DAILY_QUOTA} sorgudur.
-5. İpucu: Yanıtlarının sonuna ilgili ADM evresini (Phase A, B, C vb.) veya döküman referansını ekle.
+2. Üslup: Profesyonel, kurumsal ve mimari odaklı bir dil kullan.
+3. Kısıtlama: TOGAF dışı genel soruları reddet.
+4. İpucu: Yanıtlarının sonuna ilgili ADM evresini (Phase A, B, C vb.) veya döküman referansını ekle.
 """
 
 # --- CHAT INTERFACE ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# User Input
 if prompt := st.chat_input("Sorunuzu buraya yazın..."):
-    # Quota check (Basit oturum bazlı sayaç)
     if len(st.session_state.messages) / 2 >= MAX_DAILY_QUOTA:
         st.error(f"Günlük {MAX_DAILY_QUOTA} sorgu limitine ulaştınız.")
         st.stop()
@@ -94,10 +92,9 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
             chat = model.start_chat(history=[])
             response = chat.send_message(f"{SYSTEM_INSTRUCTION}\n\nKullanıcı Sorusu: {prompt}")
             
-            # Simulate streaming
             for chunk in response.text.split():
                 full_response += chunk + " "
-                time.sleep(0.03)
+                time.sleep(0.02)
                 message_placeholder.markdown(full_response + "▌")
             message_placeholder.markdown(full_response)
         except Exception as e:
