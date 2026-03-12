@@ -21,9 +21,7 @@ with st.sidebar:
     st.info("Bu asistan resmi TOGAF 10 dökümantasyonu üzerine uzmanlaşmıştır.")
 
 # --- API SETUP ---
-# API Key
 api_key = st.secrets.get("GEMINI_API_KEY")
-
 if not api_key:
     st.error("Sistem Yapılandırma Hatası: API anahtarı 'Secrets' içerisinde tanımlanmamış.")
     st.stop()
@@ -37,7 +35,6 @@ def get_model(api_key):
     for m_name in AVAILABLE_MODELS:
         try:
             model = genai.GenerativeModel(model_name=m_name)
-            # Modeli test et (boş bir prompt ile)
             model.generate_content("ping")
             return model
         except Exception:
@@ -45,21 +42,21 @@ def get_model(api_key):
     return None
 
 model = get_model(api_key)
-
 if not model:
     st.error("Ücretsiz katman (Free Tier) kota limitlerine takıldınız veya uygun model bulunamadı.")
-    st.info("Lütfen birkaç dakika sonra tekrar deneyin veya farklı bir API anahtarı kullanın.")
     st.stop()
 
 # --- KNOWLEDGE BASE (SYSTEM PROMPT) ---
+# Sefa'nın talebi üzerine kısıtlamaları en üst seviyeye çıkardım.
 SYSTEM_INSTRUCTION = f"""
 Sen uzman bir TOGAF 10 (The Open Group Architecture Framework) danışmanısın. 
 Görevin, kurumsal mimarların TOGAF 10 sınavı ve profesyonel uygulamaları hakkındaki sorularını teknik bir dille yanıtlamaktır.
 
-TEMEL YÖNERGELER:
-1. Kaynak: Sadece resmi TOGAF 10 standartlarını, ADM döngüsünü ve Open Group Series Guide'larını baz al.
-2. Üslup: Profesyonel, kurumsal ve mimari odaklı bir dil kullan.
-3. İpucu: Yanıtlarının sonuna ilgili ADM evresini (Phase A, B, C vb.) veya döküman referansını ekle.
+KRİTİK KISITLAMALAR VE KURALLAR:
+1. ALAN DIŞI SORULAR: Eğer kullanıcı TOGAF 10, Kurumsal Mimari, ADM döngüsü veya ilgili standartlar dışında (yemek tarifi, hava durumu, genel sohbet, kodlama, siyaset vb.) herhangi bir şey sorarsa, ASLA cevap verme. Sadece şu cümleyi söyle: "Özür dilerim, ben sadece TOGAF 10 standartları ve Kurumsal Mimari konularında uzmanlaşmış bir asistanım. Lütfen bu alanlarla ilgili bir soru sorunuz."
+2. KAYNAK: Sadece resmi TOGAF 10 dökümanlarını baz al.
+3. ÜSLUP: Profesyonel, ciddi ve kurumsal bir dil kullan. Gereksiz hiçbir yorum yapma.
+4. İPUCU: Yanıtlarının sonuna ilgili ADM evresini (Phase A, B, C vb.) veya döküman referansını ekle.
 """
 
 # --- CHAT INTERFACE ---
@@ -96,7 +93,7 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
                     time.sleep(0.01)
                 message_placeholder.markdown(full_response)
             else:
-                st.error("Model yanıt üretemedi. Kota aşılmış olabilir.")
+                st.error("Model yanıt üretemedi.")
         except Exception as e:
             if "429" in str(e):
                 st.error("Hız Sınırı (Rate Limit) Aşıldı. Lütfen 30 saniye bekleyip tekrar deneyin.")
