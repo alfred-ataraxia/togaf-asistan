@@ -16,20 +16,11 @@ st.caption("TOGAF 10 Standartları ve ADM Döngüsü Üzerine Uzmanlaşmış Kur
 # --- SIDEBAR ---
 with st.sidebar:
     st.image("https://www.opengroup.org/sites/default/files/togaf_logo.png", width=150)
-    st.header("🔒 Erişim Kontrolü")
-    access_password = st.text_input("Giriş Şifresi", type="password")
-    
     st.divider()
     st.markdown(f"**Günlük Limit:** {MAX_DAILY_QUOTA} Sorgu")
     st.info("Bu asistan resmi TOGAF 10 dökümantasyonu üzerine uzmanlaşmıştır.")
 
-# --- AUTH & API SETUP ---
-VALID_PASSWORD = "togaf"
-
-if access_password != VALID_PASSWORD:
-    st.warning("Lütfen yetkili giriş şifresini giriniz.")
-    st.stop()
-
+# --- API SETUP ---
 # API Key
 api_key = st.secrets.get("GEMINI_API_KEY")
 
@@ -38,8 +29,6 @@ if not api_key:
     st.stop()
 
 # --- MODEL SETUP ---
-# Sefa, Gemini 2.0 Flash bazen ücretsiz katmanda "limit 0" hatası verebiliyor. 
-# Bu yüzden en stabil olan 1.5-flash modelini önceliklendiriyoruz.
 AVAILABLE_MODELS = ['gemini-1.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash']
 
 @st.cache_resource
