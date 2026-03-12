@@ -40,8 +40,8 @@ if not api_key:
 # --- MODEL SETUP ---
 try:
     genai.configure(api_key=api_key)
-    # Model ismini daha spesifik hale getirdik
-    model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+    # Model ismini 'gemini-1.5-flash-latest' olarak güncelledik (404 hatasını çözmek için en garantili yol)
+    model = genai.GenerativeModel(model_name='gemini-1.5-flash-latest')
 except Exception as e:
     st.error(f"Model Yapılandırma Hatası: {str(e)}")
     st.stop()
@@ -79,14 +79,22 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
         full_response = ""
         
         try:
-            # Generate content directly with system instruction
+            # Generate content
             response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nKullanıcı Sorusu: {prompt}")
             
-            for chunk in response.text.split():
-                full_response += chunk + " "
-                time.sleep(0.02)
-                message_placeholder.markdown(full_response + "▌")
-            message_placeholder.markdown(full_response)
+            # Response handling
+            if response and response.text:
+                full_response = response.text
+                # Simulate streaming for better UX
+                words = full_response.split()
+                partial_text = ""
+                for word in words:
+                    partial_text += word + " "
+                    message_placeholder.markdown(partial_text + "▌")
+                    time.sleep(0.01)
+                message_placeholder.markdown(full_response)
+            else:
+                st.error("Model boş bir yanıt döndürdü.")
         except Exception as e:
             st.error(f"Sistem Hatası: {str(e)}")
 
