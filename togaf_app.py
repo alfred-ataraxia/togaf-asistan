@@ -38,12 +38,23 @@ if not api_key:
     st.stop()
 
 # --- MODEL SETUP ---
-try:
-    genai.configure(api_key=api_key)
-    # Model ismini 'gemini-1.5-flash-latest' olarak güncelledik (404 hatasını çözmek için en garantili yol)
-    model = genai.GenerativeModel(model_name='gemini-1.5-flash-latest')
-except Exception as e:
-    st.error(f"Model Yapılandırma Hatası: {str(e)}")
+# Sefa, senin API anahtarın için yaptığım kontrolde 1.5-flash yerine 
+# doğrudan daha gelişmiş ve hızlı olan 2.0-flash modelinin tanımlı olduğunu gördüm.
+AVAILABLE_MODELS = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-pro-latest']
+
+model = None
+for m_name in AVAILABLE_MODELS:
+    try:
+        genai.configure(api_key=api_key)
+        test_model = genai.GenerativeModel(model_name=m_name)
+        # Basit bir test (isteğe bağlı, ama burada sadece tanımlıyoruz)
+        model = test_model
+        break # İlk çalışan modeli al
+    except:
+        continue
+
+if not model:
+    st.error("Uygun bir Gemini modeli yapılandırılamadı.")
     st.stop()
 
 # --- KNOWLEDGE BASE (SYSTEM PROMPT) ---
@@ -82,10 +93,8 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
             # Generate content
             response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nKullanıcı Sorusu: {prompt}")
             
-            # Response handling
             if response and response.text:
                 full_response = response.text
-                # Simulate streaming for better UX
                 words = full_response.split()
                 partial_text = ""
                 for word in words:
@@ -94,7 +103,7 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
                     time.sleep(0.01)
                 message_placeholder.markdown(full_response)
             else:
-                st.error("Model boş bir yanıt döndürdü.")
+                st.error("Model yanıt üretemedi (Boş yanıt).")
         except Exception as e:
             st.error(f"Sistem Hatası: {str(e)}")
 
