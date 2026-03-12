@@ -10,15 +10,6 @@ MAX_DAILY_QUOTA = 60
 # --- PAGE SETUP ---
 st.set_page_config(page_title=ST_TITLE, page_icon=ST_ICON, layout="centered")
 
-# Custom CSS for Corporate Look
-st.markdown("""
-    <style>
-    .main {
-        background-color: #f8f9fa;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
 st.title(f"{ST_ICON} {ST_TITLE}")
 st.caption("TOGAF 10 Standartları ve ADM Döngüsü Üzerine Uzmanlaşmış Kurumsal Destek Sistemi")
 
@@ -39,17 +30,21 @@ if access_password != VALID_PASSWORD:
     st.warning("Lütfen yetkili giriş şifresini giriniz.")
     st.stop()
 
-# API Key - SECURE RETRIEVAL FROM STREAMLIT SECRETS
+# API Key
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
     st.error("Sistem Yapılandırma Hatası: API anahtarı 'Secrets' içerisinde tanımlanmamış.")
-    st.info("Yönetici Notu: Lütfen Streamlit Cloud ayarlarından GEMINI_API_KEY değişkenini tanımlayın.")
     st.stop()
 
 # --- MODEL SETUP ---
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
+try:
+    genai.configure(api_key=api_key)
+    # Model ismini daha spesifik hale getirdik
+    model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+except Exception as e:
+    st.error(f"Model Yapılandırma Hatası: {str(e)}")
+    st.stop()
 
 # --- KNOWLEDGE BASE (SYSTEM PROMPT) ---
 SYSTEM_INSTRUCTION = f"""
@@ -59,8 +54,7 @@ Görevin, kurumsal mimarların TOGAF 10 sınavı ve profesyonel uygulamaları ha
 TEMEL YÖNERGELER:
 1. Kaynak: Sadece resmi TOGAF 10 standartlarını, ADM döngüsünü ve Open Group Series Guide'larını baz al.
 2. Üslup: Profesyonel, kurumsal ve mimari odaklı bir dil kullan.
-3. Kısıtlama: TOGAF dışı genel soruları reddet.
-4. İpucu: Yanıtlarının sonuna ilgili ADM evresini (Phase A, B, C vb.) veya döküman referansını ekle.
+3. İpucu: Yanıtlarının sonuna ilgili ADM evresini (Phase A, B, C vb.) veya döküman referansını ekle.
 """
 
 # --- CHAT INTERFACE ---
@@ -85,8 +79,8 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
         full_response = ""
         
         try:
-            chat = model.start_chat(history=[])
-            response = chat.send_message(f"{SYSTEM_INSTRUCTION}\n\nKullanıcı Sorusu: {prompt}")
+            # Generate content directly with system instruction
+            response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nKullanıcı Sorusu: {prompt}")
             
             for chunk in response.text.split():
                 full_response += chunk + " "
