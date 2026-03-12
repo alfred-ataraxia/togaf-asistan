@@ -38,23 +38,28 @@ if not api_key:
     st.stop()
 
 # --- MODEL SETUP ---
-# Sefa, senin API anahtarın için yaptığım kontrolde 1.5-flash yerine 
-# doğrudan daha gelişmiş ve hızlı olan 2.0-flash modelinin tanımlı olduğunu gördüm.
-AVAILABLE_MODELS = ['gemini-2.0-flash', 'gemini-flash-latest', 'gemini-pro-latest']
+# Sefa, Gemini 2.0 Flash bazen ücretsiz katmanda "limit 0" hatası verebiliyor. 
+# Bu yüzden en stabil olan 1.5-flash modelini önceliklendiriyoruz.
+AVAILABLE_MODELS = ['gemini-1.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash']
 
-model = None
-for m_name in AVAILABLE_MODELS:
-    try:
-        genai.configure(api_key=api_key)
-        test_model = genai.GenerativeModel(model_name=m_name)
-        # Basit bir test (isteğe bağlı, ama burada sadece tanımlıyoruz)
-        model = test_model
-        break # İlk çalışan modeli al
-    except:
-        continue
+@st.cache_resource
+def get_model(api_key):
+    genai.configure(api_key=api_key)
+    for m_name in AVAILABLE_MODELS:
+        try:
+            model = genai.GenerativeModel(model_name=m_name)
+            # Modeli test et (boş bir prompt ile)
+            model.generate_content("ping")
+            return model
+        except Exception:
+            continue
+    return None
+
+model = get_model(api_key)
 
 if not model:
-    st.error("Uygun bir Gemini modeli yapılandırılamadı.")
+    st.error("Ücretsiz katman (Free Tier) kota limitlerine takıldınız veya uygun model bulunamadı.")
+    st.info("Lütfen birkaç dakika sonra tekrar deneyin veya farklı bir API anahtarı kullanın.")
     st.stop()
 
 # --- KNOWLEDGE BASE (SYSTEM PROMPT) ---
@@ -90,7 +95,6 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
         full_response = ""
         
         try:
-            # Generate content
             response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nKullanıcı Sorusu: {prompt}")
             
             if response and response.text:
@@ -103,8 +107,11 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
                     time.sleep(0.01)
                 message_placeholder.markdown(full_response)
             else:
-                st.error("Model yanıt üretemedi (Boş yanıt).")
+                st.error("Model yanıt üretemedi. Kota aşılmış olabilir.")
         except Exception as e:
-            st.error(f"Sistem Hatası: {str(e)}")
+            if "429" in str(e):
+                st.error("Hız Sınırı (Rate Limit) Aşıldı. Lütfen 30 saniye bekleyip tekrar deneyin.")
+            else:
+                st.error(f"Sistem Hatası: {str(e)}")
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
