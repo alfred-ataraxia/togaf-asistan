@@ -16,11 +16,8 @@ st.markdown("""
     .main {
         background-color: #f8f9fa;
     }
-    .stChatFloatingInputContainer {
-        padding-bottom: 20px;
-    }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 st.title(f"{ST_ICON} {ST_TITLE}")
 st.caption("TOGAF 10 Standartları ve ADM Döngüsü Üzerine Uzmanlaşmış Kurumsal Destek Sistemi")
@@ -43,7 +40,6 @@ if access_password != VALID_PASSWORD:
     st.stop()
 
 # API Key - SECURE RETRIEVAL FROM STREAMLIT SECRETS
-# Kullanıcı bu anahtarı Streamlit Cloud panelinde "Secrets" kısmına eklemelidir.
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
