@@ -1,11 +1,19 @@
 import streamlit as st
 import google.generativeai as genai
 import time
+from datetime import datetime, timedelta
 
 # --- CONFIGURATION ---
 ST_TITLE = "TOGAF 10 Kurumsal Mimari Asistanı"
 ST_ICON = "🏢"
-MAX_DAILY_QUOTA = 60
+MAX_DAILY_QUOTA_PER_USER = 50  # Kişi başı günlük limit
+
+# --- WHITELIST ---
+# İzin verilen kullanıcılar (email veya tanımlayıcı)
+ALLOWED_USERS = [
+    "sefkaraoglu@gmail.com",
+    "alfred.ataraxia@gmail.com",
+]
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title=ST_TITLE, page_icon=ST_ICON, layout="centered")
@@ -13,11 +21,54 @@ st.set_page_config(page_title=ST_TITLE, page_icon=ST_ICON, layout="centered")
 st.title(f"{ST_ICON} {ST_TITLE}")
 st.caption("TOGAF 10 Standartları ve ADM Döngüsü Üzerine Uzmanlaşmış Kurumsal Destek Sistemi")
 
+# --- AUTHENTICATION ---
+# Basit whitelist kontrolü
+if "user_identifier" not in st.session_state:
+    st.session_state.user_identifier = None
+
+if st.session_state.user_identifier is None:
+    with st.form("auth_form"):
+        st.markdown("### 🔐 Erişim için kimlik doğrulama")
+        user_email = st.text_input("E-posta adresiniz:")
+        submit = st.form_submit_button("Giriş")
+        
+        if submit and user_email:
+            if user_email in ALLOWED_USERS:
+                st.session_state.user_identifier = user_email
+                st.rerun()
+            else:
+                st.error("Bu e-posta adresi yetkilendirilmemiş. Erişim reddedildi.")
+                st.stop()
+    st.stop()
+
 # --- SIDEBAR ---
 with st.sidebar:
     st.image("https://www.opengroup.org/sites/default/files/togaf_logo.png", width=150)
     st.divider()
-    st.markdown(f"**Günlük Limit:** {MAX_DAILY_QUOTA} Sorgu")
+    st.markdown(f"**Kullanıcı:** {st.session_state.user_identifier}")
+    st.markdown(f"**Günlük Limit:** {MAX_DAILY_QUOTA_PER_USER} Sorgu")
+    
+    # Kullanım istatistikleri
+    if "usage_reset_date" not in st.session_state:
+        st.session_state.usage_reset_date = datetime.now().date()
+    
+    # Günlük reset
+    if st.session_state.usage_reset_date != datetime.now().date():
+        st.session_state.daily_usage = 0
+        st.session_state.usage_reset_date = datetime.now().date()
+    
+    if "daily_usage" not in st.session_state:
+        st.session_state.daily_usage = 0
+    
+    remaining = MAX_DAILY_QUOTA_PER_USER - st.session_state.daily_usage
+    st.progress(remaining / MAX_DAILY_QUOTA_PER_USER, text=f"Kalan: {remaining}/{MAX_DAILY_QUOTA_PER_USER}")
+    
+    if st.button("Çıkış"):
+        st.session_state.user_identifier = None
+        st.session_state.daily_usage = 0
+        st.rerun()
+    
+    st.divider()
     st.info("Bu asistan resmi TOGAF 10 dökümantasyonu üzerine uzmanlaşmıştır.")
 
 # --- API SETUP ---
@@ -27,7 +78,14 @@ if not api_key:
     st.stop()
 
 # --- MODEL SETUP ---
-AVAILABLE_MODELS = ['gemini-1.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash']
+# Güncellenmiş model listesi
+AVAILABLE_MODELS = [
+    'gemini-2.0-flash-exp',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-8k',
+    'gemini-flash-latest'
+]
 
 @st.cache_resource
 def get_model(api_key):
@@ -47,7 +105,6 @@ if not model:
     st.stop()
 
 # --- KNOWLEDGE BASE (SYSTEM PROMPT) ---
-# Sefa'nın talebi üzerine kısıtlamaları en üst seviyeye çıkardım.
 SYSTEM_INSTRUCTION = f"""
 Sen uzman bir TOGAF 10 (The Open Group Architecture Framework) danışmanısın. 
 Görevin, kurumsal mimarların TOGAF 10 sınavı ve profesyonel uygulamaları hakkındaki sorularını teknik bir dille yanıtlamaktır.
@@ -68,10 +125,12 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 if prompt := st.chat_input("Sorunuzu buraya yazın..."):
-    if len(st.session_state.messages) / 2 >= MAX_DAILY_QUOTA:
-        st.error(f"Günlük {MAX_DAILY_QUOTA} sorgu limitine ulaştınız.")
+    # Kişi başı limit kontrolü
+    if st.session_state.daily_usage >= MAX_DAILY_QUOTA_PER_USER:
+        st.error(f"Günlük {MAX_DAILY_QUOTA_PER_USER} sorgu limitine ulaştınız. Yarın tekrar deneyin.")
         st.stop()
-
+    
+    st.session_state.daily_usage += 1
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -101,3 +160,6 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
                 st.error(f"Sistem Hatası: {str(e)}")
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
+    
+    # Sidebar'ı güncelle
+    st.rerun()
