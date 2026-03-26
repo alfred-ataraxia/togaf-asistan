@@ -2,18 +2,12 @@ import streamlit as st
 import google.generativeai as genai
 import time
 from datetime import datetime, timedelta
+import hashlib
 
 # --- CONFIGURATION ---
 ST_TITLE = "TOGAF 10 Kurumsal Mimari Asistanı"
 ST_ICON = "🏢"
-MAX_DAILY_QUOTA_PER_USER = 50  # Kişi başı günlük limit
-
-# --- WHITELIST ---
-# İzin verilen kullanıcılar (email veya tanımlayıcı)
-ALLOWED_USERS = [
-    "sefkaraoglu@gmail.com",
-    "alfred.ataraxia@gmail.com",
-]
+MAX_DAILY_QUOTA_PER_IP = 50  # IP başı günlük limit
 
 # --- PAGE SETUP ---
 st.set_page_config(page_title=ST_TITLE, page_icon=ST_ICON, layout="centered")
@@ -21,52 +15,41 @@ st.set_page_config(page_title=ST_TITLE, page_icon=ST_ICON, layout="centered")
 st.title(f"{ST_ICON} {ST_TITLE}")
 st.caption("TOGAF 10 Standartları ve ADM Döngüsü Üzerine Uzmanlaşmış Kurumsal Destek Sistemi")
 
-# --- AUTHENTICATION ---
-# Basit whitelist kontrolü
-if "user_identifier" not in st.session_state:
-    st.session_state.user_identifier = None
+# --- IP LIMIT & TRACKING ---
+# Basit IP bazlı limit (anonim)
+def get_client_ip():
+    try:
+        return st.context.headers.get("X-Forwarded-For", "unknown").split(",")[0].strip()
+    except:
+        return "unknown"
 
-if st.session_state.user_identifier is None:
-    with st.form("auth_form"):
-        st.markdown("### 🔐 Erişim için kimlik doğrulama")
-        user_email = st.text_input("E-posta adresiniz:")
-        submit = st.form_submit_button("Giriş")
-        
-        if submit and user_email:
-            if user_email in ALLOWED_USERS:
-                st.session_state.user_identifier = user_email
-                st.rerun()
-            else:
-                st.error("Bu e-posta adresi yetkilendirilmemiş. Erişim reddedildi.")
-                st.stop()
-    st.stop()
+client_ip = get_client_ip()
+ip_hash = hashlib.md5(client_ip.encode()).hexdigest()[:8]
+
+# Session state başlatma
+if "ip_usage" not in st.session_state:
+    st.session_state.ip_usage = {}
+
+if "usage_reset_date" not in st.session_state:
+    st.session_state.usage_reset_date = datetime.now().date()
+
+# Günlük reset kontrolü
+if st.session_state.usage_reset_date != datetime.now().date():
+    st.session_state.ip_usage = {}
+    st.session_state.usage_reset_date = datetime.now().date()
+
+# IP'nin kullanımını kontrol et
+current_usage = st.session_state.ip_usage.get(ip_hash, 0)
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.image("https://www.opengroup.org/sites/default/files/togaf_logo.png", width=150)
     st.divider()
-    st.markdown(f"**Kullanıcı:** {st.session_state.user_identifier}")
-    st.markdown(f"**Günlük Limit:** {MAX_DAILY_QUOTA_PER_USER} Sorgu")
+    st.markdown(f"**IP Kodu:** `{ip_hash}`")
+    st.markdown(f"**Günlük Limit:** {MAX_DAILY_QUOTA_PER_IP} Sorgu")
     
-    # Kullanım istatistikleri
-    if "usage_reset_date" not in st.session_state:
-        st.session_state.usage_reset_date = datetime.now().date()
-    
-    # Günlük reset
-    if st.session_state.usage_reset_date != datetime.now().date():
-        st.session_state.daily_usage = 0
-        st.session_state.usage_reset_date = datetime.now().date()
-    
-    if "daily_usage" not in st.session_state:
-        st.session_state.daily_usage = 0
-    
-    remaining = MAX_DAILY_QUOTA_PER_USER - st.session_state.daily_usage
-    st.progress(remaining / MAX_DAILY_QUOTA_PER_USER, text=f"Kalan: {remaining}/{MAX_DAILY_QUOTA_PER_USER}")
-    
-    if st.button("Çıkış"):
-        st.session_state.user_identifier = None
-        st.session_state.daily_usage = 0
-        st.rerun()
+    remaining = MAX_DAILY_QUOTA_PER_IP - current_usage
+    st.progress(remaining / MAX_DAILY_QUOTA_PER_IP, text=f"Kalan: {remaining}/{MAX_DAILY_QUOTA_PER_IP}")
     
     st.divider()
     st.info("Bu asistan resmi TOGAF 10 dökümantasyonu üzerine uzmanlaşmıştır.")
@@ -74,11 +57,10 @@ with st.sidebar:
 # --- API SETUP ---
 api_key = st.secrets.get("GEMINI_API_KEY")
 if not api_key:
-    st.error("Sistem Yapılandırma Hatası: API anahtarı 'Secrets' içerisinde tanımlanmamış.")
+    st.error("Sistem Yapılandırma Hatası: API anahtarı tanımlanmamış.")
     st.stop()
 
 # --- MODEL SETUP ---
-# Güncellenmiş model listesi
 AVAILABLE_MODELS = [
     'gemini-2.0-flash-exp',
     'gemini-2.0-flash',
@@ -101,7 +83,7 @@ def get_model(api_key):
 
 model = get_model(api_key)
 if not model:
-    st.error("Ücretsiz katman (Free Tier) kota limitlerine takıldınız veya uygun model bulunamadı.")
+    st.error("Model bağlantısı başarısız. Lütfen daha sonra deneyin.")
     st.stop()
 
 # --- KNOWLEDGE BASE (SYSTEM PROMPT) ---
@@ -125,12 +107,14 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 if prompt := st.chat_input("Sorunuzu buraya yazın..."):
-    # Kişi başı limit kontrolü
-    if st.session_state.daily_usage >= MAX_DAILY_QUOTA_PER_USER:
-        st.error(f"Günlük {MAX_DAILY_QUOTA_PER_USER} sorgu limitine ulaştınız. Yarın tekrar deneyin.")
+    # IP bazlı limit kontrolü
+    if current_usage >= MAX_DAILY_QUOTA_PER_IP:
+        st.error(f"Günlük {MAX_DAILY_QUOTA_PER_IP} sorgu limitine ulaştınız (IP: {ip_hash}). Yarın tekrar deneyin.")
         st.stop()
     
-    st.session_state.daily_usage += 1
+    # Kullanımı artır
+    st.session_state.ip_usage[ip_hash] = current_usage + 1
+    
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -155,11 +139,11 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
                 st.error("Model yanıt üretemedi.")
         except Exception as e:
             if "429" in str(e):
-                st.error("Hız Sınırı (Rate Limit) Aşıldı. Lütfen 30 saniye bekleyip tekrar deneyin.")
+                st.error("Hız Sınırı Aşıldı. Lütfen 30 saniye bekleyip tekrar deneyin.")
             else:
                 st.error(f"Sistem Hatası: {str(e)}")
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
     
-    # Sidebar'ı güncelle
+    # Sayfayı güncelle
     st.rerun()
