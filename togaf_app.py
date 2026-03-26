@@ -16,7 +16,6 @@ st.title(f"{ST_ICON} {ST_TITLE}")
 st.caption("TOGAF 10 Standartları ve ADM Döngüsü Üzerine Uzmanlaşmış Kurumsal Destek Sistemi")
 
 # --- IP LIMIT & TRACKING ---
-# Basit IP bazlı limit (anonim)
 def get_client_ip():
     try:
         return st.context.headers.get("X-Forwarded-For", "unknown").split(",")[0].strip()
@@ -26,19 +25,16 @@ def get_client_ip():
 client_ip = get_client_ip()
 ip_hash = hashlib.md5(client_ip.encode()).hexdigest()[:8]
 
-# Session state başlatma
 if "ip_usage" not in st.session_state:
     st.session_state.ip_usage = {}
 
 if "usage_reset_date" not in st.session_state:
     st.session_state.usage_reset_date = datetime.now().date()
 
-# Günlük reset kontrolü
 if st.session_state.usage_reset_date != datetime.now().date():
     st.session_state.ip_usage = {}
     st.session_state.usage_reset_date = datetime.now().date()
 
-# IP'nin kullanımını kontrol et
 current_usage = st.session_state.ip_usage.get(ip_hash, 0)
 
 # --- SIDEBAR ---
@@ -57,15 +53,14 @@ with st.sidebar:
 # --- API SETUP ---
 api_key = st.secrets.get("GEMINI_API_KEY")
 if not api_key:
-    st.error("Sistem Yapılandırma Hatası: API anahtarı tanımlanmamış.")
+    st.error("API anahtarı bulunamadı.")
     st.stop()
 
 # --- MODEL SETUP ---
 AVAILABLE_MODELS = [
-    'gemini-2.0-flash-exp',
     'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
     'gemini-1.5-flash',
-    'gemini-1.5-flash-8k',
     'gemini-flash-latest'
 ]
 
@@ -77,25 +72,25 @@ def get_model(api_key):
             model = genai.GenerativeModel(model_name=m_name)
             model.generate_content("ping")
             return model
-        except Exception:
+        except Exception as e:
             continue
     return None
 
 model = get_model(api_key)
 if not model:
-    st.error("Model bağlantısı başarısız. Lütfen daha sonra deneyin.")
+    st.error("Model bağlantısı başarısız.")
     st.stop()
 
 # --- KNOWLEDGE BASE (SYSTEM PROMPT) ---
-SYSTEM_INSTRUCTION = f"""
-Sen uzman bir TOGAF 10 (The Open Group Architecture Framework) danışmanısın. 
-Görevin, kurumsal mimarların TOGAF 10 sınavı ve profesyonel uygulamaları hakkındaki sorularını teknik bir dille yanıtlamaktır.
+SYSTEM_INSTRUCTION = """
+Sen uzman bir TOGAF 10 danışmanısın. 
+Kurumsal mimarların TOGAF 10 sınavı ve profesyonel uygulamaları hakkındaki sorularını yanıtla.
 
-KRİTİK KISITLAMALAR VE KURALLAR:
-1. ALAN DIŞI SORULAR: Eğer kullanıcı TOGAF 10, Kurumsal Mimari, ADM döngüsü veya ilgili standartlar dışında (yemek tarifi, hava durumu, genel sohbet, kodlama, siyaset vb.) herhangi bir şey sorarsa, ASLA cevap verme. Sadece şu cümleyi söyle: "Özür dilerim, ben sadece TOGAF 10 standartları ve Kurumsal Mimari konularında uzmanlaşmış bir asistanım. Lütfen bu alanlarla ilgili bir soru sorunuz."
-2. KAYNAK: Sadece resmi TOGAF 10 dökümanlarını baz al.
-3. ÜSLUP: Profesyonel, ciddi ve kurumsal bir dil kullan. Gereksiz hiçbir yorum yapma.
-4. İPUCU: Yanıtlarının sonuna ilgili ADM evresini (Phase A, B, C vb.) veya döküman referansını ekle.
+KURALLAR:
+1. TOGAF 10 dışında sorulara cevap verme.
+2. Sadece resmi TOGAF 10 dökümanlarını baz al.
+3. Profesyonel ve kısa yanıtlar ver.
+4. Yanıtına ADM evresini (Phase A, B, C vb.) ekle.
 """
 
 # --- CHAT INTERFACE ---
@@ -107,12 +102,10 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 if prompt := st.chat_input("Sorunuzu buraya yazın..."):
-    # IP bazlı limit kontrolü
     if current_usage >= MAX_DAILY_QUOTA_PER_IP:
-        st.error(f"Günlük {MAX_DAILY_QUOTA_PER_IP} sorgu limitine ulaştınız (IP: {ip_hash}). Yarın tekrar deneyin.")
+        st.error(f"Günlük limit ({MAX_DAILY_QUOTA_PER_IP}) doldu.")
         st.stop()
     
-    # Kullanımı artır
     st.session_state.ip_usage[ip_hash] = current_usage + 1
     
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -124,7 +117,7 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
         full_response = ""
         
         try:
-            response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nKullanıcı Sorusu: {prompt}")
+            response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nKullanıcı: {prompt}")
             
             if response and response.text:
                 full_response = response.text
@@ -136,14 +129,9 @@ if prompt := st.chat_input("Sorunuzu buraya yazın..."):
                     time.sleep(0.01)
                 message_placeholder.markdown(full_response)
             else:
-                st.error("Model yanıt üretemedi.")
+                st.error("Yanıt alınamadı.")
         except Exception as e:
-            if "429" in str(e):
-                st.error("Hız Sınırı Aşıldı. Lütfen 30 saniye bekleyip tekrar deneyin.")
-            else:
-                st.error(f"Sistem Hatası: {str(e)}")
+            st.error(f"Hata: {str(e)}")
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
-    
-    # Sayfayı güncelle
     st.rerun()
